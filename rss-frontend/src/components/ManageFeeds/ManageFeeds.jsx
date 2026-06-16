@@ -57,57 +57,49 @@ const ManageFeedsPage = () => {
   };
 
   return (
-    <div className="container my-4">
-      <h4 className="mb-4 border-bottom pb-2">Manage RSS Feeds</h4>
+    <div className="manage-wrapper">
+      <h2>Manage RSS Feeds</h2>
 
       {status && (
-        <div className={`alert alert-${variant}`} role="alert">
+        <div className={`status-message ${variant === 'success' ? 'success' : 'error'}`} role="alert">
           {status}
         </div>
       )}
 
-      <form className="row g-2 mb-4" onSubmit={handleAddFeed}>
-        <div className="col-md-5">
-          <input
-            type="url"
-            className="form-control"
-            placeholder="RSS Feed URL"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            required
-          />
-        </div>
-        <div className="col-md-4">
-          <input
-            type="text"
-            className="form-control"
-            placeholder="Feed Name (optional)"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </div>
-        <div className="col-md-3">
-          <button type="submit" className="btn btn-primary w-100">
-            Add Feed
-          </button>
-        </div>
+      <form className="feed-form" onSubmit={handleAddFeed}>
+        <input
+          type="url"
+          placeholder="RSS Feed URL"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          required
+        />
+        <input
+          type="text"
+          placeholder="Feed Name (optional)"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <button type="submit">
+          Add Feed
+        </button>
       </form>
 
-      <div className="table-responsive">
-        <table className="table table-bordered table-hover align-middle">
-          <thead className="table-light">
+      <div style={{ overflowX: 'auto' }}>
+        <table className="feed-table">
+          <thead>
             <tr>
-              <th scope="col">#</th>
-              <th scope="col">Name</th>
-              <th scope="col">URL</th>
-              <th scope="col">Action</th>
+              <th style={{ width: '60px' }}>#</th>
+              <th>Name</th>
+              <th>URL</th>
+              <th style={{ width: '120px' }}>Action</th>
             </tr>
           </thead>
           <tbody>
             {feeds.length > 0 ? (
               feeds.map((feed, index) => (
                 <tr key={feed.id}>
-                  <th scope="row">{index + 1}</th>
+                  <td>{index + 1}</td>
                   <td>{feed.name}</td>
                   <td>
                     <a href={feed.url} target="_blank" rel="noopener noreferrer">
@@ -116,7 +108,7 @@ const ManageFeedsPage = () => {
                   </td>
                   <td>
                     <button
-                      className="btn btn-sm btn-danger"
+                      className="delete-btn"
                       onClick={() => handleDeleteFeed(feed.id)}
                     >
                       Remove
@@ -126,7 +118,7 @@ const ManageFeedsPage = () => {
               ))
             ) : (
               <tr>
-                <td colSpan="4" className="text-center">No feeds available</td>
+                <td colSpan="4" className="text-center" style={{ color: '#6B7280', padding: '24px' }}>No feeds available</td>
               </tr>
             )}
           </tbody>
