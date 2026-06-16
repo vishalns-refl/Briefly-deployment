@@ -1,4 +1,8 @@
+fastapi
+pydantic
+supabase
 requests
 feedparser
-BeautifulSoup4
-uv == 0.8.4
+beautifulsoup4
+python-dotenv
+uvicorn
