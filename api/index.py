@@ -227,6 +227,67 @@ class NewsArticle:
             'image_url': getattr(self, 'image_url', None)
         }
 
+def calculate_model_cost(model: str, prompt_tokens: int, completion_tokens: int) -> float:
+    """Calculate the cost in USD based on model pricing per million tokens"""
+    model_lower = model.lower()
+    
+    # Default pricing per token (default to gpt-3.5-turbo rates: input $0.50/M, output $1.50/M)
+    input_rate = 0.50 / 1_000_000
+    output_rate = 1.50 / 1_000_000
+    
+    if "gpt-4o-mini" in model_lower:
+        input_rate = 0.15 / 1_000_000
+        output_rate = 0.60 / 1_000_000
+    elif "gpt-4o" in model_lower:
+        input_rate = 5.00 / 1_000_000
+        output_rate = 15.00 / 1_000_000
+    elif "gpt-3.5" in model_lower:
+        input_rate = 0.50 / 1_000_000
+        output_rate = 1.50 / 1_000_000
+    elif "gemini-1.5-flash" in model_lower:
+        input_rate = 0.075 / 1_000_000
+        output_rate = 0.30 / 1_000_000
+    elif "gemini-1.5-pro" in model_lower:
+        input_rate = 1.25 / 1_000_000
+        output_rate = 5.00 / 1_000_000
+    elif "llama3-8b" in model_lower or "llama-3-8b" in model_lower:
+        input_rate = 0.05 / 1_000_000
+        output_rate = 0.08 / 1_000_000
+    elif "llama3-70b" in model_lower or "llama-3-70b" in model_lower:
+        input_rate = 0.59 / 1_000_000
+        output_rate = 0.79 / 1_000_000
+    elif "claude-3-haiku" in model_lower:
+        input_rate = 0.25 / 1_000_000
+        output_rate = 1.25 / 1_000_000
+    elif "claude-3-5-sonnet" in model_lower:
+        input_rate = 3.00 / 1_000_000
+        output_rate = 15.00 / 1_000_000
+
+    cost = (prompt_tokens * input_rate) + (completion_tokens * output_rate)
+    return round(cost, 8)
+
+def log_api_usage(model: str, prompt_tokens: int, completion_tokens: int, purpose: str):
+    """Log API usage to the Supabase database"""
+    if not supabase:
+        print("Supabase client not initialized. Cannot log usage.")
+        return
+        
+    try:
+        total_tokens = prompt_tokens + completion_tokens
+        cost = calculate_model_cost(model, prompt_tokens, completion_tokens)
+        
+        supabase.table("api_usage").insert({
+            "model": model,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+            "cost": cost,
+            "purpose": purpose
+        }).execute()
+        print(f"Logged API usage: {model} ({purpose}) - {total_tokens} tokens, ${cost:.6f}")
+    except Exception as e:
+        print(f"Error logging API usage: {e}")
+
 def generate_ai_response(content, settings):
     try:
         headers = {
@@ -254,7 +315,19 @@ def generate_ai_response(content, settings):
         )
         
         if response.status_code == 200:
-            response_text = response.json()['choices'][0]['message']['content'].strip()
+            resp_data = response.json()
+            response_text = resp_data['choices'][0]['message']['content'].strip()
+            
+            # Extract usage metrics
+            usage = resp_data.get('usage', {})
+            prompt_tokens = usage.get('prompt_tokens', 0)
+            completion_tokens = usage.get('completion_tokens', 0)
+            log_api_usage(
+                model=settings['model'],
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                purpose="summary"
+            )
             
             # Extract JSON from potential markdown response
             start = response_text.find("{")
@@ -682,12 +755,119 @@ async def convert_url_to_did_you_know(request: ArticleURLRequest):
             timeout=30
         )
         if response.status_code == 200:
-            result = response.json()["choices"][0]["message"]["content"].strip()
+            resp_data = response.json()
+            result = resp_data["choices"][0]["message"]["content"].strip()
+            
+            # Extract usage metrics
+            usage = resp_data.get('usage', {})
+            prompt_tokens = usage.get('prompt_tokens', 0)
+            completion_tokens = usage.get('completion_tokens', 0)
+            log_api_usage(
+                model=default["model"],
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                purpose="did_you_know"
+            )
             return {"did_you_know": result}
         else:
             raise HTTPException(status_code=500, detail="Failed to generate summary from LLM.")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error during LLM call: {str(e)}")
+
+@app.get("/api/usage-metrics")
+async def get_usage_metrics():
+    """Retrieve summarized API usage metrics and cost details"""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    try:
+        # Fetch all usage logs
+        response = supabase.table("api_usage").select("*").order("timestamp", desc=True).execute()
+        logs = response.data
+        
+        # Calculate summary statistics
+        total_calls = len(logs)
+        total_prompt_tokens = sum(l.get("prompt_tokens", 0) for l in logs)
+        total_completion_tokens = sum(l.get("completion_tokens", 0) for l in logs)
+        total_tokens = sum(l.get("total_tokens", 0) for l in logs)
+        total_cost = sum(float(l.get("cost", 0)) for l in logs)
+        
+        # Average cost per call/article
+        avg_cost_per_summary = 0.0
+        summary_calls = [l for l in logs if l.get("purpose") == "summary"]
+        if summary_calls:
+            summary_cost = sum(float(l.get("cost", 0)) for l in summary_calls)
+            avg_cost_per_summary = summary_cost / len(summary_calls)
+            
+        # Model Breakdown
+        model_stats = {}
+        for l in logs:
+            m = l.get("model", "unknown")
+            cost = float(l.get("cost", 0))
+            tokens = l.get("total_tokens", 0)
+            if m not in model_stats:
+                model_stats[m] = {"calls": 0, "total_cost": 0.0, "total_tokens": 0}
+            model_stats[m]["calls"] += 1
+            model_stats[m]["total_cost"] += cost
+            model_stats[m]["total_tokens"] += tokens
+            
+        # Purpose Breakdown
+        purpose_stats = {}
+        for l in logs:
+            p = l.get("purpose", "other")
+            cost = float(l.get("cost", 0))
+            tokens = l.get("total_tokens", 0)
+            if p not in purpose_stats:
+                purpose_stats[p] = {"calls": 0, "total_cost": 0.0, "total_tokens": 0}
+            purpose_stats[p]["calls"] += 1
+            purpose_stats[p]["total_cost"] += cost
+            purpose_stats[p]["total_tokens"] += tokens
+
+        # Daily Cost (for trends)
+        daily_stats = {}
+        for l in logs:
+            ts = l.get("timestamp", "")
+            if ts:
+                date_str = ts.split("T")[0]
+                cost = float(l.get("cost", 0))
+                if date_str not in daily_stats:
+                    daily_stats[date_str] = 0.0
+                daily_stats[date_str] += cost
+                
+        # Format daily stats into sorted list
+        daily_trends = [{"date": d, "cost": round(daily_stats[d], 6)} for d in sorted(daily_stats.keys())]
+        
+        return {
+            "summary": {
+                "total_calls": total_calls,
+                "total_prompt_tokens": total_prompt_tokens,
+                "total_completion_tokens": total_completion_tokens,
+                "total_tokens": total_tokens,
+                "total_cost": round(total_cost, 6),
+                "avg_cost_per_summary": round(avg_cost_per_summary, 6)
+            },
+            "model_breakdown": [
+                {
+                    "model": m,
+                    "calls": stats["calls"],
+                    "total_cost": round(stats["total_cost"], 6),
+                    "total_tokens": stats["total_tokens"]
+                }
+                for m, stats in model_stats.items()
+            ],
+            "purpose_breakdown": [
+                {
+                    "purpose": p,
+                    "calls": stats["calls"],
+                    "total_cost": round(stats["total_cost"], 6),
+                    "total_tokens": stats["total_tokens"]
+                }
+                for p, stats in purpose_stats.items()
+            ],
+            "daily_trends": daily_trends,
+            "recent_logs": logs[:15]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error calculating metrics: {str(e)}")
 
 @app.on_event("startup")
 async def startup_event():

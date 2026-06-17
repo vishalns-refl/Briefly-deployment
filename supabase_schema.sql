@@ -30,6 +30,18 @@ CREATE TABLE IF NOT EXISTS articles (
 -- ALTER TABLE articles ADD COLUMN IF NOT EXISTS feed_id BIGINT REFERENCES feeds(id) ON DELETE CASCADE;
 -- ALTER TABLE articles ADD COLUMN IF NOT EXISTS image_url TEXT;
 -- ALTER TABLE feeds ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE NOT NULL;
+--
+-- CREATE TABLE IF NOT EXISTS api_usage (
+--   id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+--   timestamp TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+--   model TEXT NOT NULL,
+--   prompt_tokens INT NOT NULL,
+--   completion_tokens INT NOT NULL,
+--   total_tokens INT NOT NULL,
+--   cost NUMERIC(10, 6) NOT NULL,
+--   purpose TEXT NOT NULL
+-- );
+-- ALTER TABLE api_usage DISABLE ROW LEVEL SECURITY;
 
 
 -- 3. Disable Row Level Security (RLS) for simple backend access.
@@ -37,7 +49,20 @@ CREATE TABLE IF NOT EXISTS articles (
 ALTER TABLE feeds DISABLE ROW LEVEL SECURITY;
 ALTER TABLE articles DISABLE ROW LEVEL SECURITY;
 
--- 4. Insert initial sample feeds if you'd like
+-- 4. Create the api_usage table
+CREATE TABLE IF NOT EXISTS api_usage (
+  id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  timestamp TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+  model TEXT NOT NULL,
+  prompt_tokens INT NOT NULL,
+  completion_tokens INT NOT NULL,
+  total_tokens INT NOT NULL,
+  cost NUMERIC(10, 6) NOT NULL,
+  purpose TEXT NOT NULL
+);
+ALTER TABLE api_usage DISABLE ROW LEVEL SECURITY;
+
+-- 5. Insert initial sample feeds if you'd like
 INSERT INTO feeds (name, url) 
 VALUES 
   ('Hacker News', 'https://news.ycombinator.com/rss'),
