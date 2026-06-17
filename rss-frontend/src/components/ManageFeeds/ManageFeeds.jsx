@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { fetchFeeds, addFeed, deleteFeed } from '../../api';
+import { fetchFeeds, addFeed, deleteFeed, toggleFeedStatus } from '../../api';
 import './ManageFeeds.css';
 
 const ManageFeedsPage = () => {
@@ -56,6 +56,18 @@ const ManageFeedsPage = () => {
     }
   };
 
+  const handleToggleFeed = async (id, currentStatus) => {
+    try {
+      const res = await toggleFeedStatus(id, !currentStatus);
+      setVariant('success');
+      setStatus(res.data.message);
+      loadFeeds();
+    } catch (err) {
+      setVariant('danger');
+      setStatus(err.response?.data?.detail || 'Failed to update feed status');
+    }
+  };
+
   return (
     <div className="manage-wrapper">
       <h2>Manage RSS Feeds</h2>
@@ -92,13 +104,14 @@ const ManageFeedsPage = () => {
               <th style={{ width: '60px' }}>#</th>
               <th>Name</th>
               <th>URL</th>
-              <th style={{ width: '120px' }}>Action</th>
+              <th style={{ width: '100px' }}>Status</th>
+              <th style={{ width: '220px' }}>Action</th>
             </tr>
           </thead>
           <tbody>
             {feeds.length > 0 ? (
               feeds.map((feed, index) => (
-                <tr key={feed.id}>
+                <tr key={feed.id} className={feed.is_active ? '' : 'feed-paused'}>
                   <td>{index + 1}</td>
                   <td>{feed.name}</td>
                   <td>
@@ -107,18 +120,31 @@ const ManageFeedsPage = () => {
                     </a>
                   </td>
                   <td>
-                    <button
-                      className="delete-btn"
-                      onClick={() => handleDeleteFeed(feed.id)}
-                    >
-                      Remove
-                    </button>
+                    <span className={`status-badge ${feed.is_active ? 'active' : 'paused'}`}>
+                      {feed.is_active ? 'Active' : 'Paused'}
+                    </span>
+                  </td>
+                  <td>
+                    <div className="action-buttons">
+                      <button
+                        className={`status-btn ${feed.is_active ? 'pause-btn' : 'resume-btn'}`}
+                        onClick={() => handleToggleFeed(feed.id, feed.is_active)}
+                      >
+                        {feed.is_active ? '⏸️ Pause' : '▶️ Resume'}
+                      </button>
+                      <button
+                        className="delete-btn"
+                        onClick={() => handleDeleteFeed(feed.id)}
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
             ) : (
               <tr>
-                <td colSpan="4" className="text-center" style={{ color: '#6B7280', padding: '24px' }}>No feeds available</td>
+                <td colSpan="5" className="text-center" style={{ color: '#6B7280', padding: '24px' }}>No feeds available</td>
               </tr>
             )}
           </tbody>

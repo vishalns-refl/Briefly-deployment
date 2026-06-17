@@ -25,6 +25,7 @@ export const fetchSummary = (id) => API.get(`/article/${id}/summary`);
 export const fetchFeeds = () => API.get('/feeds');
 export const addFeed = (feed) => API.post('/feeds', feed);
 export const deleteFeed = (id) => API.delete(`/feeds/${id}`);
+export const toggleFeedStatus = (id, isActive) => API.put(`/feeds/${id}`, { is_active: isActive });
 export const didYouKnowContent = (url) => API.post('/convert-url', {url});
 export const processFeed = (id) => API.post(`/process-feed/${id}`);
 export const deleteAllArticles = () => API.delete('/articles');

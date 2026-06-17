@@ -70,7 +70,7 @@ const LandingPage = () => {
       <div className="landing-card">
         <div className="landing-logo">Briefly</div>
         <div className="landing-subtitle">
-          Your personalized, AI-powered newsletter generator. Summarizing the web's best technical content on-demand.
+          Your personalized, AI-powered newsletter generator. Summarizing the web's best technical content.
         </div>
 
         {loadingFeeds ? (
@@ -146,19 +146,29 @@ const LandingPage = () => {
           </div>
         )}
 
-        <div className="feature-grid">
-          <div className="feature-item">
-            <span className="feature-icon">⚡</span>
-            <div>
-              <div className="feature-title">On-Demand AI Power</div>
-              <div className="feature-desc">Summarizes latest posts instantly. Zero compute wasted when idle.</div>
+        <div className="quickstart-section">
+          <h3>Quick Start Guide</h3>
+          <div className="quickstart-steps">
+            <div className="quickstart-step">
+              <span className="step-number">1</span>
+              <div className="step-content">
+                <span className="step-title">Configure Feeds</span>
+                <span className="step-desc">Add RSS links of your favorite blogs and websites in the <strong>My Feeds</strong> tab.</span>
+              </div>
             </div>
-          </div>
-          <div className="feature-item">
-            <span className="feature-icon">🛡️</span>
-            <div>
-              <div className="feature-title">Zero-Timeout Design</div>
-              <div className="feature-desc">Fetches feed-by-feed to guarantee success within serverless limits.</div>
+            <div className="quickstart-step">
+              <span className="step-number">2</span>
+              <div className="step-content">
+                <span className="step-title">Sync &amp; Summarize</span>
+                <span className="step-desc">Click <strong>Fetch Latest Summaries</strong> to fetch and AI-summarize the latest posts.</span>
+              </div>
+            </div>
+            <div className="quickstart-step">
+              <span className="step-number">3</span>
+              <div className="step-content">
+                <span className="step-title">Read &amp; Copy</span>
+                <span className="step-desc">Browse summaries on your <strong>Dashboard</strong> and copy hooks using the copy icon.</span>
+              </div>
             </div>
           </div>
         </div>

@@ -67,6 +67,10 @@ class FeedResponse(BaseModel):
     id: int
     name: str
     url: str
+    is_active: bool = True
+
+class FeedUpdateRequest(BaseModel):
+    is_active: bool
 
 class ArticleResponse(BaseModel):
     id: int
@@ -314,7 +318,7 @@ def process_feeds_background():
         
     print("Starting RSS feed processing...")
     try:
-        feeds_response = supabase.table("feeds").select("*").execute()
+        feeds_response = supabase.table("feeds").select("*").eq("is_active", True).execute()
         feeds = feeds_response.data
     except Exception as e:
         print(f"Error loading feeds from database: {e}")
@@ -537,7 +541,7 @@ async def get_feeds():
     try:
         response = supabase.table("feeds").select("*").order("name").execute()
         feeds = response.data
-        return [FeedResponse(id=f["id"], name=f["name"], url=f["url"]) for f in feeds]
+        return [FeedResponse(id=f["id"], name=f["name"], url=f["url"], is_active=f.get("is_active", True)) for f in feeds]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error loading feeds: {str(e)}")
 
@@ -586,6 +590,24 @@ async def remove_feed(feed_id: int):
         # Then delete the feed
         supabase.table("feeds").delete().eq("id", feed_id).execute()
         return {"message": f"Feed '{existing.data[0]['name']}' and its articles removed successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+@app.put("/api/feeds/{feed_id}")
+async def update_feed(feed_id: int, request: FeedUpdateRequest):
+    """Update a feed's status (active/paused)"""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    try:
+        existing = supabase.table("feeds").select("id").eq("id", feed_id).execute()
+        if not existing.data:
+            raise HTTPException(status_code=404, detail="Feed not found")
+            
+        supabase.table("feeds").update({"is_active": request.is_active}).eq("id", feed_id).execute()
+        status_str = "resumed" if request.is_active else "paused"
+        return {"message": f"Feed was successfully {status_str}."}
     except HTTPException:
         raise
     except Exception as e:
