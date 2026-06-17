@@ -3,7 +3,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "api/index.py"
+      "destination": "/api/index.py"
     },
     {
       "source": "/((?!api/|static/|favicon.ico|manifest.json|logo192.png|logo512.png|index.html|.*\\..*).*)",
