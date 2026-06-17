@@ -14,7 +14,7 @@ const HomePage = () => {
   const [copiedId, setCopiedId] = useState(null);
 
   const handleCopy = (article, idx) => {
-    const textToCopy = `Heading: ${article.title}\nSummary: ${article.summary || 'No summary available.'}\nSource: ${article.url || article.link}`;
+    const textToCopy = `${article.title}\n${article.summary || 'No summary available.'}\nSource: ${article.url || article.link}`;
     navigator.clipboard.writeText(textToCopy)
       .then(() => {
         setCopiedId(idx);

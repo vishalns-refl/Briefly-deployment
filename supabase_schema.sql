@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS feeds (
   id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   name TEXT NOT NULL,
   url TEXT NOT NULL UNIQUE,
+  is_active BOOLEAN DEFAULT TRUE NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
@@ -28,6 +29,7 @@ CREATE TABLE IF NOT EXISTS articles (
 -- If you already created your database tables, run the following statements in your SQL Editor:
 -- ALTER TABLE articles ADD COLUMN IF NOT EXISTS feed_id BIGINT REFERENCES feeds(id) ON DELETE CASCADE;
 -- ALTER TABLE articles ADD COLUMN IF NOT EXISTS image_url TEXT;
+-- ALTER TABLE feeds ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE NOT NULL;
 
 
 -- 3. Disable Row Level Security (RLS) for simple backend access.
