@@ -29,5 +29,6 @@ export const toggleFeedStatus = (id, isActive) => API.put(`/feeds/${id}`, { is_a
 export const didYouKnowContent = (url) => API.post('/convert-url', {url});
 export const processFeed = (id) => API.post(`/process-feed/${id}`);
 export const deleteAllArticles = () => API.delete('/articles');
+export const fetchUsageMetrics = () => API.get('/usage-metrics');
 
 

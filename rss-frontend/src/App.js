@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react
 import LandingPage from './components/LandingPage/LandingPage';
 import HomePage from './components/HomePage/HomePage';
 import ManageFeedsPage from './components/ManageFeeds/ManageFeeds';
+import UsageMetrics from './components/UsageMetrics/UsageMetrics';
 
 import './App.css';
 
@@ -20,6 +21,10 @@ const NavigationHeader = () => {
     
     if (path === '/feeds') {
       return location.pathname === '/feeds' ? 'active' : '';
+    }
+    
+    if (path === '/metrics') {
+      return location.pathname === '/metrics' ? 'active' : '';
     }
     
     if (path === '/dashboard') {
@@ -46,6 +51,7 @@ const NavigationHeader = () => {
         <Link to="/dashboard?tag=Business" className={getLinkClass('/dashboard', 'Business')}>Business</Link>
         <Link to="/dashboard?tag=Games%2FEntertainment" className={getLinkClass('/dashboard', 'Games/Entertainment')}>Games/Entertainment</Link>
         <Link to="/feeds" className={getLinkClass('/feeds')}>My Feeds</Link>
+        <Link to="/metrics" className={getLinkClass('/metrics')}>API Dashboard</Link>
       </nav>
     </header>
   );
@@ -59,6 +65,7 @@ function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/dashboard" element={<HomePage />} />
           <Route path="/feeds" element={<ManageFeedsPage />} />
+          <Route path="/metrics" element={<UsageMetrics />} />
       </Routes>
     </Router>
   );
