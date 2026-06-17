@@ -1,13 +1,12 @@
 {
-  "cleanUrls": true,
   "rewrites": [
     {
       "source": "/api/(.*)",
       "destination": "/api/index.py"
     },
     {
-      "source": "/((?!api/|static/|favicon.ico|manifest.json|logo192.png|logo512.png|index.html|.*\\..*).*)",
-      "destination": "/index.html"
+      "source": "/",
+      "destination": "/api/index.py"
     }
   ]
 }
