@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { fetchArticles, didYouKnowContent, deleteAllArticles } from '../../api';
-import { FaThList, FaThLarge } from 'react-icons/fa';
+import { FaThList, FaThLarge, FaCopy, FaCheck } from 'react-icons/fa';
 import './HomePage.css';
 
 const HomePage = () => {
@@ -11,6 +11,19 @@ const HomePage = () => {
   const [dykContent, setDykContent] = useState(null);
   const [loadingId, setLoadingId] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const [copiedId, setCopiedId] = useState(null);
+
+  const handleCopy = (article, idx) => {
+    const textToCopy = `Heading: ${article.title}\nSummary: ${article.summary || 'No summary available.'}\nSource: ${article.url || article.link}`;
+    navigator.clipboard.writeText(textToCopy)
+      .then(() => {
+        setCopiedId(idx);
+        setTimeout(() => {
+          setCopiedId(null);
+        }, 2000);
+      })
+      .catch(err => console.error('Failed to copy', err));
+  };
   
   const [searchParams] = useSearchParams();
   const tagFilter = searchParams.get("tag"); // <-- Get tag from URL
@@ -105,7 +118,22 @@ const HomePage = () => {
       <div className={`row g-4 ${viewMode === 'grid' ? 'row-cols-1 row-cols-md-2 row-cols-lg-4' : 'row-cols-1'}`}>
         {paginatedArticles.map((article, idx) => (
           <div key={idx} className="col">
-            <div className="article-card">
+            <div className={`article-card ${viewMode === 'list' ? 'card-list' : 'card-grid'}`}>
+              <button 
+                className="btn-copy-article" 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCopy(article, idx);
+                }}
+                title="Copy heading and summary"
+              >
+                {copiedId === idx ? <FaCheck style={{ color: '#10B981' }} /> : <FaCopy />}
+              </button>
+              {article.image_url && (
+                <div className="article-image-wrapper">
+                  <img src={article.image_url} alt={article.title} className="article-thumbnail" loading="lazy" />
+                </div>
+              )}
               <div className="article-body">
                 {article.tag && (
                   <span className={`article-tag ${getTagClass(article.tag)}`}>

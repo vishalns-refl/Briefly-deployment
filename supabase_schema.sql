@@ -20,12 +20,14 @@ CREATE TABLE IF NOT EXISTS articles (
   summary TEXT NOT NULL,
   feed_name TEXT,
   tag TEXT DEFAULT 'Unknown',
+  image_url TEXT,
   feed_id BIGINT REFERENCES feeds(id) ON DELETE CASCADE
 );
 
 -- MIGRATION NOTE FOR EXISTING PROJECTS:
--- If you already created your database tables, run the following statement in your SQL Editor:
+-- If you already created your database tables, run the following statements in your SQL Editor:
 -- ALTER TABLE articles ADD COLUMN IF NOT EXISTS feed_id BIGINT REFERENCES feeds(id) ON DELETE CASCADE;
+-- ALTER TABLE articles ADD COLUMN IF NOT EXISTS image_url TEXT;
 
 
 -- 3. Disable Row Level Security (RLS) for simple backend access.

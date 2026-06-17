@@ -54,7 +54,7 @@ default = {
     'system': os.environ.get("FEEDSUMMARIZER_SYSTEM", "You are an expert summarizer."),
     'instruction': os.environ.get("FEEDSUMMARIZER_INSTRUCTION", "Summarize this article into a short, punchy tech fact (max 2 sentences) to put in a newsletter, prioritizing the most important information first and then adding supporting details (inverted pyramid style). Categorize it into one of the following categories: AI, New in Tech, Business, Games/Entertainment. Return the response in the following JSON format only and do NOT include any markdown or escape characters inside it :{\"summary\": \"Your summary here\", \"tag\": \"Category\"}"),
     'maximum': int(os.environ.get("FEEDSUMMARIZER_MAX_ARTICLES", "10")),  # Lowered default max articles per run for serverless efficiency
-    'dyk_prompt': os.environ.get("FEEDSUMMARIZER_DYK_INSTRUCTION", "Turn this article into one fun, factual, and that feels like a surprising fact or hook for a newsletter. It should be exciting and attention-grabbing, but it does not have to start with 'Did you know'."),
+    'dyk_prompt': os.environ.get("FEEDSUMMARIZER_DYK_INSTRUCTION", "Turn this article into a fact that feels like a surprising fact or hook for a newsletter. It should be exciting and attention-grabbing. Do not include emojis"),
     'time_lapse': int(os.environ.get("FEEDSUMMARIZER_TIME_LAPSE", "86400"))
 }
 
@@ -78,6 +78,7 @@ class ArticleResponse(BaseModel):
     summary: str
     tag: str
     feed_name: Optional[str] = ""
+    image_url: Optional[str] = None
 
 class ArticleURLRequest(BaseModel):
     url: str
@@ -89,11 +90,92 @@ class NewsArticle:
         self.date = getattr(entry, 'updated', getattr(entry, 'published', 'Unknown'))
         self.author = getattr(entry, 'author', 'Unknown')
         self.timestamp = datetime.now().isoformat()
+        self.image_url = self.get_image_from_entry(entry)
         self.text = self.get_page_content(self.url, max_text_length)
         self.summary = ""
         self.feed_name = ""
         self.tag = ""
         
+    def get_image_from_entry(self, entry):
+        # 1a. media:thumbnail or media:content
+        if hasattr(entry, 'media_thumbnail') and entry.media_thumbnail:
+            if isinstance(entry.media_thumbnail, list) and len(entry.media_thumbnail) > 0:
+                thumb = entry.media_thumbnail[0]
+                if isinstance(thumb, dict) and thumb.get('url'):
+                    return thumb['url']
+                elif isinstance(thumb, str):
+                    return thumb
+        
+        if hasattr(entry, 'media_content') and entry.media_content:
+            if isinstance(entry.media_content, list) and len(entry.media_content) > 0:
+                content = entry.media_content[0]
+                if isinstance(content, dict) and content.get('url'):
+                    return content['url']
+                elif isinstance(content, str):
+                    return content
+
+        # 1b. enclosures
+        if hasattr(entry, 'enclosures') and entry.enclosures:
+            for enc in entry.enclosures:
+                if isinstance(enc, dict):
+                    if enc.get('type', '').startswith('image/') and enc.get('href'):
+                        return enc['href']
+                    elif enc.get('url'):
+                        return enc['url']
+
+        # 1c. links
+        if hasattr(entry, 'links') and entry.links:
+            for link in entry.links:
+                if isinstance(link, dict):
+                    if link.get('type', '').startswith('image/') and link.get('href'):
+                        return link['href']
+
+        # 1d. parse html description/summary for img
+        for attr in ['summary', 'description', 'content']:
+            val = getattr(entry, attr, '')
+            if isinstance(val, list) and len(val) > 0:
+                val = val[0].get('value', '') if isinstance(val[0], dict) else str(val[0])
+            if val and isinstance(val, str) and '<img' in val:
+                try:
+                    temp_soup = BeautifulSoup(val, 'html.parser')
+                    img = temp_soup.find('img')
+                    if img and img.get('src'):
+                        return img['src']
+                except:
+                    pass
+        return None
+
+    def get_image_from_soup(self, soup, url):
+        # og:image
+        og_image = soup.find('meta', property='og:image') or soup.find('meta', attrs={"name": "og:image"})
+        if og_image and og_image.get('content'):
+            return og_image['content']
+            
+        # twitter:image
+        twitter_image = soup.find('meta', name='twitter:image') or soup.find('meta', attrs={"property": "twitter:image"})
+        if twitter_image and twitter_image.get('content'):
+            return twitter_image['content']
+            
+        # link rel="image_src"
+        img_src = soup.find('link', rel='image_src')
+        if img_src and img_src.get('href'):
+            return img_src['href']
+
+        # Fallback to first reasonable img tag
+        for img in soup.find_all('img'):
+            src = img.get('src')
+            if src:
+                src_lower = src.lower()
+                if not any(x in src_lower for x in ['logo', 'icon', 'avatar', 'loader', 'spinner', 'advertisement', 'ad.jpg', 'ad.png', 'pixel']):
+                    if src.startswith('//'):
+                        return 'https:' + src
+                    elif src.startswith('/'):
+                        from urllib.parse import urljoin
+                        return urljoin(url, src)
+                    elif src.startswith('http'):
+                        return src
+        return None
+
     def get_page_content(self, url, max_text_length):
         if url == "NO LINK":
             return "The feed entry doesn't seem to have any URL."
@@ -105,6 +187,10 @@ class NewsArticle:
             return f"The page {url} could not be loaded: {str(e)}"
         
         soup = BeautifulSoup(response.content, "html.parser")
+        
+        if not self.image_url:
+            self.image_url = self.get_image_from_soup(soup, url)
+            
         paragraphs = soup.find_all("p")
         
         if paragraphs:
@@ -133,7 +219,8 @@ class NewsArticle:
             'timestamp': self.timestamp,
             'summary': self.summary,
             'feed_name': getattr(self, 'feed_name', ''),
-            'tag': self.tag
+            'tag': self.tag,
+            'image_url': getattr(self, 'image_url', None)
         }
 
 def generate_ai_response(content, settings):
@@ -291,7 +378,8 @@ def process_feeds_background():
                         "summary": art_dict['summary'],
                         "feed_name": art_dict['feed_name'],
                         "tag": art_dict['tag'],
-                        "feed_id": feed_info['id']
+                        "feed_id": feed_info['id'],
+                        "image_url": art_dict['image_url']
                     }).execute()
                     new_articles_count += 1
                 except Exception as e:
@@ -372,7 +460,8 @@ def process_single_feed_by_id(feed_id: int):
                     "summary": art_dict['summary'],
                     "feed_name": art_dict['feed_name'],
                     "tag": art_dict['tag'],
-                    "feed_id": feed_info['id']
+                    "feed_id": feed_info['id'],
+                    "image_url": art_dict['image_url']
                 }).execute()
                 new_articles_count += 1
             except Exception as e:
@@ -412,7 +501,8 @@ async def get_articles(limit: int = 100):
                 timestamp=str(article.get('timestamp') or ''),
                 summary=article.get('summary') or '',
                 feed_name=article.get('feed_name') or '',
-                tag=article.get('tag') or 'Unknown'
+                tag=article.get('tag') or 'Unknown',
+                image_url=article.get('image_url') or None
             ))
         return result
     except Exception as e:

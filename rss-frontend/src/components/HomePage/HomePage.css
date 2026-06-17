@@ -294,3 +294,105 @@
   border-color: rgba(255, 255, 255, 0.03);
   color: #4B5563;
 }
+
+/* ===== Copy Article Button ===== */
+.btn-copy-article {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: rgba(3, 7, 18, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #9CA3AF;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 10;
+}
+
+.btn-copy-article:hover {
+  background: rgba(3, 7, 18, 0.9);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #FFF;
+  transform: translateY(-1px) scale(1.05);
+}
+
+.btn-copy-article:active {
+  transform: scale(0.95);
+}
+
+.btn-copy-article svg {
+  font-size: 0.85rem;
+}
+
+/* ===== Article Image Thumbnail ===== */
+.article-image-wrapper {
+  position: relative;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.article-thumbnail {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.article-card:hover .article-thumbnail {
+  transform: scale(1.06);
+}
+
+/* Grid layout image adjustment */
+.card-grid .article-image-wrapper {
+  height: 180px;
+  margin: -24px -24px 16px -24px;
+  width: calc(100% + 48px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* List layout image adjustment */
+.card-list .article-image-wrapper {
+  width: 200px;
+  height: 140px;
+  border-radius: 12px;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Adjust card layout for list view mode */
+@media (min-width: 768px) {
+  .card-list {
+    flex-direction: row !important;
+    gap: 24px;
+    align-items: flex-start;
+  }
+  
+  .card-list .article-body {
+    flex-grow: 1;
+    width: 0; /* allows flex content wrapping */
+  }
+  
+  .card-list .btn-copy-article {
+    top: 24px;
+    right: 24px;
+  }
+}
+
+@media (max-width: 767px) {
+  .card-list .article-image-wrapper {
+    width: 100%;
+    height: 180px;
+    border-radius: 12px;
+    margin-bottom: 16px;
+  }
+}
