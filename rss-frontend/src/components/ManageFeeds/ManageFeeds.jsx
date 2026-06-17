@@ -8,6 +8,7 @@ const ManageFeedsPage = () => {
   const [name, setName] = useState('');
   const [status, setStatus] = useState('');
   const [variant, setVariant] = useState('info');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadFeeds();
@@ -15,11 +16,14 @@ const ManageFeedsPage = () => {
 
   const loadFeeds = async () => {
     try {
+      setLoading(true);
       const res = await fetchFeeds();
       setFeeds(res.data);
     } catch (err) {
       setVariant('danger');
       setStatus('Failed to load feeds');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -109,7 +113,16 @@ const ManageFeedsPage = () => {
             </tr>
           </thead>
           <tbody>
-            {feeds.length > 0 ? (
+            {loading ? (
+              <tr>
+                <td colSpan="5" className="text-center" style={{ padding: '36px' }}>
+                  <div className="loading-spinner-container">
+                    <div className="loading-spinner"></div>
+                    <span style={{ color: '#9CA3AF', fontSize: '0.9rem' }}>Loading feeds...</span>
+                  </div>
+                </td>
+              </tr>
+            ) : feeds.length > 0 ? (
               feeds.map((feed, index) => (
                 <tr key={feed.id} className={feed.is_active ? '' : 'feed-paused'}>
                   <td>{index + 1}</td>

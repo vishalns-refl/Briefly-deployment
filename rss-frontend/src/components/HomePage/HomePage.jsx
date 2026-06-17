@@ -8,6 +8,7 @@ const HomePage = () => {
   const [articles, setArticles] = useState([]);
   const [viewMode, setViewMode] = useState('grid'); 
   const [currentPage, setCurrentPage] = useState(1);
+  const [loading, setLoading] = useState(true);
   const [dykContent, setDykContent] = useState(null);
   const [loadingId, setLoadingId] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -31,6 +32,7 @@ const HomePage = () => {
   const itemsPerPage = 8;
 
   useEffect(() => {
+    setLoading(true);
     fetchArticles(40)
       .then(res => {
         let data = res.data;
@@ -41,7 +43,8 @@ const HomePage = () => {
         console.log(data);
         setCurrentPage(1); // reset to page 1 when tag changes
       })
-      .catch(err => console.error('Failed to load articles', err));
+      .catch(err => console.error('Failed to load articles', err))
+      .finally(() => setLoading(false));
   }, [tagFilter]);
 
   const toggleView = () => {
@@ -115,74 +118,83 @@ const HomePage = () => {
         {tagFilter ? `Showing ${tagFilter} Articles` : 'All Articles'}
       </h3>
 
-      <div className={`row g-4 ${viewMode === 'grid' ? 'row-cols-1 row-cols-md-2 row-cols-lg-4' : 'row-cols-1'}`}>
-        {paginatedArticles.map((article, idx) => (
-          <div key={idx} className="col">
-            <div className={`article-card ${viewMode === 'list' ? 'card-list' : 'card-grid'}`}>
-              <button 
-                className="btn-copy-article" 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleCopy(article, idx);
-                }}
-                title="Copy heading and summary"
-              >
-                {copiedId === idx ? <FaCheck style={{ color: '#10B981' }} /> : <FaCopy />}
-              </button>
-              {article.image_url && (
-                <div className="article-image-wrapper">
-                  <img src={article.image_url} alt={article.title} className="article-thumbnail" loading="lazy" />
-                </div>
-              )}
-              <div className="article-body">
-                {article.tag && (
-                  <span className={`article-tag ${getTagClass(article.tag)}`}>
-                    {article.tag}
-                  </span>
-                )}
-                <h3>{article.title}</h3>
-                <div className="meta">
-                  <span>{article.feed_name || 'Unknown'}</span>
-                  <span className="bullet">•</span>
-                  <span>{new Date(article.date || article.published_at).toLocaleDateString()}</span>
-                </div>
-                <div className="summary">
-                  {article.summary || 'No summary available.'}
-                </div>
-                <div className="actions">
-                  <a href={article.url || article.link} target="_blank" rel="noreferrer">
-                    Read More
-                  </a>
-                  <button
-                    className="did-you-know"
-                    onClick={() => handleContent(article.url || article.link, idx)}
-                    disabled={loadingId === idx} 
+      {loading ? (
+        <div className="homepage-loading-container">
+          <div className="loading-spinner"></div>
+          <p>Fetching technical feeds and compiling AI summaries...</p>
+        </div>
+      ) : (
+        <>
+          <div className={`row g-4 ${viewMode === 'grid' ? 'row-cols-1 row-cols-md-2 row-cols-lg-4' : 'row-cols-1'}`}>
+            {paginatedArticles.map((article, idx) => (
+              <div key={idx} className="col">
+                <div className={`article-card ${viewMode === 'list' ? 'card-list' : 'card-grid'}`}>
+                  <button 
+                    className="btn-copy-article" 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleCopy(article, idx);
+                    }}
+                    title="Copy heading and summary"
                   >
-                    {loadingId === idx ? (
-                      <span className="spinner-border spinner-border-sm text-info" role="status" />
-                    ) : (
-                      'Did you know?'
+                    {copiedId === idx ? <FaCheck style={{ color: '#10B981' }} /> : <FaCopy />}
+                  </button>
+                  {article.image_url && (
+                    <div className="article-image-wrapper">
+                      <img src={article.image_url} alt={article.title} className="article-thumbnail" loading="lazy" />
+                    </div>
+                  )}
+                  <div className="article-body">
+                    {article.tag && (
+                      <span className={`article-tag ${getTagClass(article.tag)}`}>
+                        {article.tag}
+                      </span>
                     )}
-                  </button>                
+                    <h3>{article.title}</h3>
+                    <div className="meta">
+                      <span>{article.feed_name || 'Unknown'}</span>
+                      <span className="bullet">•</span>
+                      <span>{new Date(article.date || article.published_at).toLocaleDateString()}</span>
+                    </div>
+                    <div className="summary">
+                      {article.summary || 'No summary available.'}
+                    </div>
+                    <div className="actions">
+                      <a href={article.url || article.link} target="_blank" rel="noreferrer">
+                        Read More
+                      </a>
+                      <button
+                        className="did-you-know"
+                        onClick={() => handleContent(article.url || article.link, idx)}
+                        disabled={loadingId === idx} 
+                      >
+                        {loadingId === idx ? (
+                          <span className="spinner-border spinner-border-sm text-info" role="status" />
+                        ) : (
+                          'Did you know?'
+                        )}
+                      </button>                
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {totalPages > 1 && (
-        <nav className="pagination-controls">
-          <ul className="pagination">
-            {Array.from({ length: totalPages }).map((_, i) => (
-              <li key={i} className={`page-item ${currentPage === i + 1 ? 'active' : ''}`}>
-                <button className="page-link" onClick={() => handlePageChange(i + 1)}>
-                  {i + 1}
-                </button>
-              </li>
             ))}
-          </ul>
-        </nav>
+          </div>
+
+          {totalPages > 1 && (
+            <nav className="pagination-controls">
+              <ul className="pagination">
+                {Array.from({ length: totalPages }).map((_, i) => (
+                  <li key={i} className={`page-item ${currentPage === i + 1 ? 'active' : ''}`}>
+                    <button className="page-link" onClick={() => handlePageChange(i + 1)}>
+                      {i + 1}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          )}
+        </>
       )}
 
       {showModal && (

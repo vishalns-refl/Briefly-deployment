@@ -31,12 +31,22 @@ const LandingPage = () => {
     setProgress(0);
     setLogs([]);
     
-    let processedCount = 0;
-    
     for (let i = 0; i < feeds.length; i++) {
       const feed = feeds[i];
       setCurrentFeed(feed.name);
       setLogs(prev => [...prev, { text: `Connecting to ${feed.name}...`, type: 'info' }]);
+      
+      const startPercent = (i / feeds.length) * 100;
+      const targetPercent = ((i + 1) / feeds.length) * 100;
+      const stepLimit = Math.round(startPercent + (targetPercent - startPercent) * 0.9);
+      let currentProgressVal = Math.round(startPercent);
+      
+      const ticker = setInterval(() => {
+        if (currentProgressVal < stepLimit) {
+          currentProgressVal += 1;
+          setProgress(currentProgressVal);
+        }
+      }, 400);
       
       try {
         const response = await processFeed(feed.id);
@@ -51,10 +61,10 @@ const LandingPage = () => {
           ...prev, 
           { text: `✗ Failed to process ${feed.name}: ${err.response?.data?.detail || err.message}`, type: 'error' }
         ]);
+      } finally {
+        clearInterval(ticker);
+        setProgress(Math.round(targetPercent));
       }
-      
-      processedCount++;
-      setProgress(Math.round((processedCount / feeds.length) * 100));
     }
     
     setCurrentFeed('Completed');
