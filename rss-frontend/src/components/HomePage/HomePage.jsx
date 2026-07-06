@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { fetchArticles, didYouKnowContent, deleteAllArticles, generateNewsletter } from '../../api';
+import { fetchArticles, didYouKnowContent, deleteAllArticles } from '../../api';
 import { FaThList, FaThLarge, FaCopy, FaCheck } from 'react-icons/fa';
 import './HomePage.css';
 
@@ -14,14 +14,11 @@ const HomePage = () => {
   const [showModal, setShowModal] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
   
-  // L&D Newsletter Curation States
+  // L&D Shortlist States
   const [showLDOnly, setShowLDOnly] = useState(false);
   const [pinnedIds, setPinnedIds] = useState([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [guidelines, setGuidelines] = useState('');
-  const [newsletterDraft, setNewsletterDraft] = useState('');
-  const [generating, setGenerating] = useState(false);
-  const [copiedDraft, setCopiedDraft] = useState(false);
+  const [copiedShortlist, setCopiedShortlist] = useState(false);
 
   const handleCopy = (article, idx) => {
     const textToCopy = `${article.title}\n${article.summary || 'No summary available.'}\nSource: ${article.url || article.link}`;
@@ -84,35 +81,33 @@ const HomePage = () => {
     if (pinnedIds.includes(articleId)) {
       setPinnedIds(prev => prev.filter(id => id !== articleId));
     } else {
-      if (pinnedIds.length >= 5) {
-        alert("You can select a maximum of 5 articles for the newsletter curation.");
+      if (pinnedIds.length >= 15) {
+        alert("You can select a maximum of 15 articles for the shortlist.");
         return;
       }
       setPinnedIds(prev => [...prev, articleId]);
     }
   };
 
-  const handleGenerateNewsletter = async () => {
-    setGenerating(true);
-    setNewsletterDraft('');
-    try {
-      const { data } = await generateNewsletter(pinnedIds, guidelines);
-      setNewsletterDraft(data.newsletter);
-    } catch (err) {
-      console.error("Failed to generate newsletter", err);
-      alert("Failed to generate newsletter: " + (err.response?.data?.detail || err.message));
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  const handleCopyDraft = () => {
-    navigator.clipboard.writeText(newsletterDraft)
+  const handleCopyShortlist = () => {
+    const pinnedArticles = articles.filter(a => pinnedIds.includes(a.id));
+    if (pinnedArticles.length === 0) return;
+    
+    const text = pinnedArticles.map((art, index) => {
+      let item = `### [${art.title}](${art.url})\n`;
+      if (art.feed_name) item += `- **Source**: ${art.feed_name}\n`;
+      if (art.ld_tag) item += `- **Category**: ${art.ld_tag}\n`;
+      if (art.summary) item += `- **Summary**: ${art.summary}\n`;
+      if (art.ld_insight) item += `- **L&D Insight**: ${art.ld_insight}\n`;
+      return item;
+    }).join('\n');
+    
+    navigator.clipboard.writeText(text)
       .then(() => {
-        setCopiedDraft(true);
-        setTimeout(() => setCopiedDraft(false), 2000);
+        setCopiedShortlist(true);
+        setTimeout(() => setCopiedShortlist(false), 2000);
       })
-      .catch(err => console.error("Failed to copy newsletter draft", err));
+      .catch(err => console.error("Failed to copy shortlist", err));
   };
   
   const handleContent = async (url, id) => {
@@ -174,7 +169,7 @@ const HomePage = () => {
               className="btn-open-drawer" 
               onClick={() => setDrawerOpen(true)}
             >
-              📌 Newsletter Builder ({pinnedIds.length}/5)
+              📌 Shortlisted ({pinnedIds.length})
             </button>
           )}
           <button
@@ -296,14 +291,14 @@ const HomePage = () => {
         </>
       )}
 
-      {/* Curation Drawer */}
+      {/* Shortlist Drawer */}
       <div className={`curation-drawer ${drawerOpen ? 'open' : ''}`}>
         <div className="drawer-header">
-          <h4>📌 Curate Newsletter</h4>
+          <h4>📌 Shortlisted Articles</h4>
           <button className="btn-close-drawer" onClick={() => setDrawerOpen(false)}>&times;</button>
         </div>
         <div className="drawer-body">
-          <p className="drawer-desc">Select 3 to 5 articles to build an AI-powered monthly L&D newsletter draft.</p>
+          <p className="drawer-desc">Select and shortlist up to 15 articles to curate for your newsletter.</p>
           
           <div className="pinned-list">
             {pinnedIds.length === 0 ? (
@@ -320,48 +315,13 @@ const HomePage = () => {
             )}
           </div>
           
-          <div className="form-group mt-3">
-            <label className="text-light small font-weight-bold">Theme / Guidelines (Optional):</label>
-            <textarea
-              className="form-control text-light bg-dark border-secondary"
-              placeholder="e.g. Focus on remote team leadership skills and virtual collaboration tools..."
-              value={guidelines}
-              onChange={(e) => setGuidelines(e.target.value)}
-              rows={3}
-            />
-          </div>
-          
           <button
-            className="btn-generate-newsletter mt-3 w-100"
-            disabled={pinnedIds.length < 3 || pinnedIds.length > 5 || generating}
-            onClick={handleGenerateNewsletter}
+            className="btn-generate-newsletter mt-4 w-100"
+            disabled={pinnedIds.length === 0}
+            onClick={handleCopyShortlist}
           >
-            {generating ? (
-              <span>⏳ Generating Newsletter...</span>
-            ) : (
-              `✨ Generate L&D Newsletter (${pinnedIds.length}/5 Pinned)`
-            )}
+            {copiedShortlist ? '✅ Copied to Clipboard!' : `📋 Copy Shortlist (${pinnedIds.length})`}
           </button>
-          {pinnedIds.length < 3 && pinnedIds.length > 0 && (
-            <div className="text-warning small mt-2 text-center">Please pin at least 3 articles to generate.</div>
-          )}
-          
-          {newsletterDraft && (
-            <div className="newsletter-output-box mt-4">
-              <div className="output-header">
-                <h5>📝 Generated Draft</h5>
-                <button className="btn-copy-draft" onClick={handleCopyDraft}>
-                  {copiedDraft ? 'Copied!' : 'Copy Draft'}
-                </button>
-              </div>
-              <textarea
-                className="newsletter-raw-textarea"
-                readOnly
-                value={newsletterDraft}
-                rows={12}
-              />
-            </div>
-          )}
         </div>
       </div>
 

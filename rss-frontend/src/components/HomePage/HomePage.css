@@ -471,34 +471,43 @@
   right: 16px;
   display: flex;
   gap: 8px;
-  z-index: 10;
+  z-index: 20;
 }
 
-.card-top-actions button {
-  background: rgba(3, 7, 18, 0.7);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #D1D5DB;
-  font-size: 0.8rem;
-  font-weight: 600;
-  padding: 6px 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+.card-top-actions button,
+.card-top-actions .btn-copy-article {
+  position: static !important;
+  background: rgba(3, 7, 18, 0.7) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: #D1D5DB !important;
+  font-size: 0.8rem !important;
+  font-weight: 600 !important;
+  padding: 6px 12px !important;
+  border-radius: 8px !important;
+  width: auto !important;
+  height: auto !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  cursor: pointer !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 
-.card-top-actions button:hover {
-  background: rgba(3, 7, 18, 0.95);
-  border-color: rgba(255, 255, 255, 0.3);
-  color: #FFF;
-  transform: translateY(-1px);
+.card-top-actions button:hover,
+.card-top-actions .btn-copy-article:hover {
+  background: rgba(3, 7, 18, 0.95) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+  color: #FFF !important;
+  transform: translateY(-1px) !important;
 }
 
 .btn-pin-card.pinned {
-  background: rgba(139, 92, 246, 0.2) !important;
-  border-color: rgba(139, 92, 246, 0.5) !important;
-  color: #C084FC !important;
+  background: rgba(16, 185, 129, 0.2) !important;
+  border-color: rgba(16, 185, 129, 0.5) !important;
+  color: #34D399 !important;
 }
 
 /* Tags Container */
