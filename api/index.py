@@ -616,7 +616,10 @@ async def get_feeds():
         feeds = response.data
         return [FeedResponse(id=f["id"], name=f["name"], url=f["url"], is_active=f.get("is_active", True)) for f in feeds]
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error loading feeds: {str(e)}")
+        import traceback
+        tb = traceback.format_exc()
+        print(f"Error loading feeds: {str(e)}\n{tb}")
+        raise HTTPException(status_code=500, detail=f"Error loading feeds: {str(e)}\nTraceback:\n{tb}")
 
 @app.post("/api/feeds")
 async def add_feed(feed_request: FeedRequest):
