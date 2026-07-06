@@ -609,14 +609,8 @@ async def get_article_summary(article_id: int):
 @app.get("/api/feeds", response_model=List[FeedResponse])
 async def get_feeds():
     """Get all RSS feeds from database"""
-    import os
-    env_info = {
-        "SUPABASE_URL": os.environ.get("SUPABASE_URL"),
-        "SUPABASE_KEY_LEN": len(os.environ.get("SUPABASE_KEY", "")),
-        "keys": list(os.environ.keys())
-    }
     if not supabase:
-        raise HTTPException(status_code=500, detail=f"Supabase not configured. Env info: {env_info}")
+        raise HTTPException(status_code=500, detail="Supabase not configured")
     try:
         response = supabase.table("feeds").select("*").order("name").execute()
         feeds = response.data
@@ -625,7 +619,7 @@ async def get_feeds():
         import traceback
         tb = traceback.format_exc()
         print(f"Error loading feeds: {str(e)}\n{tb}")
-        raise HTTPException(status_code=500, detail=f"Error loading feeds: {str(e)}\nEnv info: {env_info}\nTraceback:\n{tb}")
+        raise HTTPException(status_code=500, detail=f"Error loading feeds: {str(e)}")
 
 @app.post("/api/feeds")
 async def add_feed(feed_request: FeedRequest):
