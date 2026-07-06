@@ -52,7 +52,7 @@ default = {
     'api_key': os.environ.get("OPENAI_API_KEY", ""),
     'model': os.environ.get("FEEDSUMMARIZER_MODEL", "gpt-3.5-turbo"),
     'system': os.environ.get("FEEDSUMMARIZER_SYSTEM", "You are an expert summarizer."),
-    'instruction': os.environ.get("FEEDSUMMARIZER_INSTRUCTION", "Summarize this article into a short, punchy tech fact (max 2 sentences) to put in a newsletter, prioritizing the most important information first and then adding supporting details (inverted pyramid style). Categorize it into one of the following categories: AI, New in Tech, Business, Games/Entertainment. Return the response in the following JSON format only and do NOT include any markdown or escape characters inside it :{\"summary\": \"Your summary here\", \"tag\": \"Category\"}"),
+    'instruction': os.environ.get("FEEDSUMMARIZER_INSTRUCTION", "Summarize this article into a short, punchy tech fact (max 2 sentences) to put in a newsletter, prioritizing the most important information first. Categorize it (AI, New in Tech, Business, Games/Entertainment). Also, evaluate this article from a Learning & Development / HR perspective and output an L&D relevance score from 1 to 10 (where 10 is extremely useful for workplace learning, upskilling, leadership, remote work, or productivity tools), an L&D tag (Future of Work, Tech Upskilling, Workplace Culture, Leadership, or Productivity Tools), and a 1-2 sentence non-technical L&D insight explaining why an employee or team should care. Return the response in the following JSON format only, with NO markdown formatting, backticks, or escape characters: {\"summary\": \"Your summary here\", \"tag\": \"Category\", \"ld_score\": 8, \"ld_tag\": \"Future of Work\", \"ld_insight\": \"Your non-technical L&D insight here\"}"),
     'maximum': int(os.environ.get("FEEDSUMMARIZER_MAX_ARTICLES", "10")),  # Lowered default max articles per run for serverless efficiency
     'dyk_prompt': os.environ.get("FEEDSUMMARIZER_DYK_INSTRUCTION", "Turn this article into a fact that feels like a surprising fact or hook for a newsletter. It should be exciting and attention-grabbing. Do not include emojis"),
     'time_lapse': int(os.environ.get("FEEDSUMMARIZER_TIME_LAPSE", "86400"))
@@ -83,9 +83,16 @@ class ArticleResponse(BaseModel):
     tag: str
     feed_name: Optional[str] = ""
     image_url: Optional[str] = None
+    ld_score: Optional[int] = None
+    ld_tag: Optional[str] = None
+    ld_insight: Optional[str] = None
 
 class ArticleURLRequest(BaseModel):
     url: str
+
+class NewsletterRequest(BaseModel):
+    article_ids: List[int]
+    custom_guidelines: Optional[str] = None
 
 class NewsArticle:
     def __init__(self, entry, max_text_length):
@@ -99,6 +106,9 @@ class NewsArticle:
         self.summary = ""
         self.feed_name = ""
         self.tag = ""
+        self.ld_score = None
+        self.ld_tag = None
+        self.ld_insight = None
         
     def get_image_from_entry(self, entry):
         # 1a. media:thumbnail or media:content
@@ -208,10 +218,13 @@ class NewsArticle:
     
     def summarize(self, settings):
         if self.text and "doesn't seem to have any URL" not in self.text:
-            self.summary, self.tag = generate_ai_response(self.text, settings)
+            self.summary, self.tag, self.ld_score, self.ld_tag, self.ld_insight = generate_ai_response(self.text, settings)
         else:
             self.summary = "Could not summarize - no content available"
             self.tag = "Unknown"
+            self.ld_score = None
+            self.ld_tag = None
+            self.ld_insight = None
         return self.summary
     
     def to_dict(self):
@@ -224,7 +237,10 @@ class NewsArticle:
             'summary': self.summary,
             'feed_name': getattr(self, 'feed_name', ''),
             'tag': self.tag,
-            'image_url': getattr(self, 'image_url', None)
+            'image_url': getattr(self, 'image_url', None),
+            'ld_score': self.ld_score,
+            'ld_tag': self.ld_tag,
+            'ld_insight': self.ld_insight
         }
 
 def calculate_model_cost(model: str, prompt_tokens: int, completion_tokens: int) -> float:
@@ -335,7 +351,7 @@ def generate_ai_response(content, settings):
             if start != -1 and end != -1:
                 response_text = response_text[start:end+1]
             else:
-                return f"Error parsing response text: {response_text}", "Unknown"
+                return f"Error parsing response text: {response_text}", "Unknown", None, None, None
             
             response_text = response_text.replace("\n", "").replace("\t", "")
             
@@ -343,14 +359,22 @@ def generate_ai_response(content, settings):
                 response_json = json.loads(response_text)
                 summary = response_json.get('summary', '').strip()
                 tag = response_json.get('tag', 'Unknown').strip()
-                return summary, tag
+                ld_score = response_json.get('ld_score')
+                if ld_score is not None:
+                    try:
+                        ld_score = int(ld_score)
+                    except (ValueError, TypeError):
+                        ld_score = None
+                ld_tag = response_json.get('ld_tag', '').strip() or None
+                ld_insight = response_json.get('ld_insight', '').strip() or None
+                return summary, tag, ld_score, ld_tag, ld_insight
             except json.JSONDecodeError:
-                return f"Error parsing JSON: {response_text}", "Unknown"
+                return f"Error parsing JSON: {response_text}", "Unknown", None, None, None
         else:
-            return f"LLM Error: {response.status_code}", "Unknown"
+            return f"LLM Error: {response.status_code}", "Unknown", None, None, None
             
     except Exception as e:
-        return f"Exception occurred: {str(e)}", "Unknown"
+        return f"Exception occurred: {str(e)}", "Unknown", None, None, None
 
 def fetch_article_text(url: str, max_text_length: int = 7000) -> str:
     try:
@@ -370,6 +394,54 @@ def fetch_article_text(url: str, max_text_length: int = 7000) -> str:
         return f"Content of {url}:\n{text}"
     else:
         return f"The web page at {url} doesn't seem to have any readable content."
+
+def save_article_to_db(art_dict: dict, feed_id: int):
+    """Save an article dict to the database, falling back gracefully if L&D columns do not exist yet"""
+    if not supabase:
+        return None
+        
+    full_payload = {
+        "title": art_dict['title'],
+        "url": art_dict['url'],
+        "date": art_dict['date'],
+        "author": art_dict['author'],
+        "summary": art_dict['summary'],
+        "feed_name": art_dict['feed_name'],
+        "tag": art_dict['tag'],
+        "feed_id": feed_id,
+        "image_url": art_dict['image_url'],
+        "ld_score": art_dict.get('ld_score'),
+        "ld_tag": art_dict.get('ld_tag'),
+        "ld_insight": art_dict.get('ld_insight')
+    }
+    
+    try:
+        # Try inserting with all fields (including L&D columns)
+        return supabase.table("articles").insert(full_payload).execute()
+    except Exception as e:
+        error_msg = str(e)
+        # Check if the error is due to missing columns (PGRST204 or undefined_column)
+        if "ld_score" in error_msg or "ld_tag" in error_msg or "ld_insight" in error_msg or "PGRST204" in error_msg:
+            print("L&D schema columns missing. Retrying insert without L&D fields...")
+            # Fall back to base payload
+            base_payload = {
+                "title": art_dict['title'],
+                "url": art_dict['url'],
+                "date": art_dict['date'],
+                "author": art_dict['author'],
+                "summary": art_dict['summary'],
+                "feed_name": art_dict['feed_name'],
+                "tag": art_dict['tag'],
+                "feed_id": feed_id,
+                "image_url": art_dict['image_url']
+            }
+            try:
+                return supabase.table("articles").insert(base_payload).execute()
+            except Exception as e2:
+                print(f"Fallback insert failed: {e2}")
+                raise e2
+        else:
+            raise e
 
 def clear_old_articles():
     """Remove articles older than a month (30 days) from the database"""
@@ -447,17 +519,7 @@ def process_feeds_background():
                 # Save immediately to database
                 try:
                     art_dict = article.to_dict()
-                    supabase.table("articles").insert({
-                        "title": art_dict['title'],
-                        "url": art_dict['url'],
-                        "date": art_dict['date'],
-                        "author": art_dict['author'],
-                        "summary": art_dict['summary'],
-                        "feed_name": art_dict['feed_name'],
-                        "tag": art_dict['tag'],
-                        "feed_id": feed_info['id'],
-                        "image_url": art_dict['image_url']
-                    }).execute()
+                    save_article_to_db(art_dict, feed_info['id'])
                     new_articles_count += 1
                 except Exception as e:
                     print(f"Error saving article: {e}")
@@ -529,17 +591,7 @@ def process_single_feed_by_id(feed_id: int):
             # Save immediately to database
             try:
                 art_dict = article.to_dict()
-                supabase.table("articles").insert({
-                    "title": art_dict['title'],
-                    "url": art_dict['url'],
-                    "date": art_dict['date'],
-                    "author": art_dict['author'],
-                    "summary": art_dict['summary'],
-                    "feed_name": art_dict['feed_name'],
-                    "tag": art_dict['tag'],
-                    "feed_id": feed_info['id'],
-                    "image_url": art_dict['image_url']
-                }).execute()
+                save_article_to_db(art_dict, feed_info['id'])
                 new_articles_count += 1
             except Exception as e:
                 print(f"Error saving article: {e}")
@@ -590,7 +642,10 @@ async def get_articles(limit: int = 100):
                 summary=article.get('summary') or '',
                 feed_name=article.get('feed_name') or '',
                 tag=article.get('tag') or 'Unknown',
-                image_url=article.get('image_url') or None
+                image_url=article.get('image_url') or None,
+                ld_score=article.get('ld_score'),
+                ld_tag=article.get('ld_tag'),
+                ld_insight=article.get('ld_insight')
             ))
         return result
     except Exception as e:
@@ -882,6 +937,111 @@ async def get_usage_metrics():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error calculating metrics: {str(e)}")
+
+@app.post("/api/generate-newsletter")
+async def generate_newsletter(request: NewsletterRequest):
+    """Generate a Learning & Development monthly newsletter from a shortlist of articles"""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    if not request.article_ids:
+        raise HTTPException(status_code=400, detail="No articles selected")
+        
+    try:
+        # Fetch the selected articles from database
+        response = supabase.table("articles").select("*").in_("id", request.article_ids).execute()
+        articles = response.data
+        if not articles:
+            raise HTTPException(status_code=404, detail="No matching articles found in database")
+            
+        # Compile article text details
+        compiled_articles = []
+        for index, art in enumerate(articles, 1):
+            title = art.get('title', 'Unknown Title')
+            url = art.get('url', '#')
+            summary = art.get('summary', '')
+            ld_tag = art.get('ld_tag', 'General Tech')
+            ld_insight = art.get('ld_insight', '')
+            
+            art_text = f"Article {index}:\n- Title: {title}\n- URL: {url}\n- Summary: {summary}\n- L&D Category: {ld_tag}\n"
+            if ld_insight:
+                art_text += f"- L&D Workplace Insight: {ld_insight}\n"
+            compiled_articles.append(art_text)
+            
+        articles_block = "\n---\n".join(compiled_articles)
+        
+        # Build prompt
+        system_prompt = "You are a professional HR Learning & Development (L&D) specialist."
+        user_prompt = f"""Write a monthly Learning & Development newsletter based on the following curated articles.
+        
+Articles:
+{articles_block}
+"""
+        if request.custom_guidelines:
+            user_prompt += f"\nCustom Guidelines/Theme from the Editor:\n{request.custom_guidelines}\n"
+            
+        user_prompt += """
+Please structure the newsletter with:
+1. An engaging, growth-oriented Subject Line.
+2. A brief, professional Editor's Introduction discussing the month's key L&D trends, leadership lessons, or skill growth insights highlighted by these articles.
+3. Curated summary sections for each article:
+   - Make the article title a markdown link to its URL (e.g. `### [Title](URL)`).
+   - A short explanation of "Why this matters for team growth / productivity".
+   - A brief non-technical summary of the core message.
+4. A friendly, action-oriented closing/call-to-action encouraging team members to share or discuss these topics in their meetings.
+
+Keep the tone professional, friendly, encouraging, and completely non-technical. Use clear Markdown.
+Do not wrap your output in markdown codeblock backticks (e.g. do not start with ```markdown and do not end with ```), return the raw markdown content directly.
+"""
+        
+        # Call OpenAI API
+        settings = default.copy()
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {settings['api_key']}"
+        }
+        
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+        
+        data = {
+            'model': settings['model'],
+            'messages': messages,
+            'max_tokens': 1200,
+            'temperature': 0.7
+        }
+        
+        api_res = requests.post(
+            f"{settings['url']}/chat/completions",
+            headers=headers,
+            json=data,
+            timeout=45
+        )
+        
+        if api_res.status_code == 200:
+            resp_data = api_res.json()
+            newsletter_draft = resp_data['choices'][0]['message']['content'].strip()
+            
+            # Log usage
+            usage = api_res.json().get('usage', {})
+            prompt_tokens = usage.get('prompt_tokens', 0)
+            completion_tokens = usage.get('completion_tokens', 0)
+            log_api_usage(
+                model=settings['model'],
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                purpose="newsletter"
+            )
+            
+            return {"newsletter": newsletter_draft}
+        else:
+            raise HTTPException(status_code=500, detail=f"LLM generation failed: {api_res.status_code} - {api_res.text}")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating newsletter: {str(e)}")
 
 @app.on_event("startup")
 async def startup_event():

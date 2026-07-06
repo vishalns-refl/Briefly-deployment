@@ -31,5 +31,6 @@ export const processFeed = (id) => API.post(`/process-feed/${id}`);
 export const deleteAllArticles = () => API.delete('/articles');
 export const fetchUsageMetrics = () => API.get('/usage-metrics');
 export const fetchArticlesCount = () => API.get('/articles/count');
+export const generateNewsletter = (articleIds, customGuidelines) => API.post('/generate-newsletter', { article_ids: articleIds, custom_guidelines: customGuidelines });
 
 
