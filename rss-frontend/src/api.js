@@ -30,5 +30,6 @@ export const didYouKnowContent = (url) => API.post('/convert-url', {url});
 export const processFeed = (id) => API.post(`/process-feed/${id}`);
 export const deleteAllArticles = () => API.delete('/articles');
 export const fetchUsageMetrics = () => API.get('/usage-metrics');
+export const fetchArticlesCount = () => API.get('/articles/count');
 
 

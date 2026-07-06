@@ -264,3 +264,23 @@
   color: #9CA3AF;
   line-height: 1.45;
 }
+
+.landing-stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: -12px;
+  margin-bottom: 32px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 8px 20px;
+  border-radius: 50px;
+  font-size: 0.9rem;
+  color: #D1D5DB;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.stats-divider {
+  color: rgba(255, 255, 255, 0.15);
+}

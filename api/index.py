@@ -558,6 +558,17 @@ def process_single_feed_by_id(feed_id: int):
 async def get_home():
     return HTMLResponse("<h3>RSS Feed Summarizer Backend API</h3><p>Running successfully on Vercel!</p>")
 
+@app.get("/api/articles/count")
+async def get_articles_count():
+    """Get the total count of articles in the database"""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    try:
+        response = supabase.table("articles").select("id", count="exact").limit(0).execute()
+        return {"count": response.count or 0}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error loading articles count: {str(e)}")
+
 @app.get("/api/articles", response_model=List[ArticleResponse])
 async def get_articles(limit: int = 100):
     """Get recent articles from database"""

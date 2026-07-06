@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchFeeds, processFeed } from '../../api';
+import { fetchFeeds, processFeed, fetchArticlesCount } from '../../api';
 import './LandingPage.css';
 
 const LandingPage = () => {
   const [feeds, setFeeds] = useState([]);
+  const [articlesCount, setArticlesCount] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [currentFeed, setCurrentFeed] = useState(null);
   const [progress, setProgress] = useState(0);
@@ -13,13 +14,14 @@ const LandingPage = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetchFeeds()
-      .then(res => {
-        setFeeds(res.data);
+    Promise.all([fetchFeeds(), fetchArticlesCount()])
+      .then(([feedsRes, countRes]) => {
+        setFeeds(feedsRes.data);
+        setArticlesCount(countRes.data.count);
         setLoadingFeeds(false);
       })
       .catch(err => {
-        console.error('Failed to load feeds', err);
+        console.error('Failed to load initial data', err);
         setLoadingFeeds(false);
       });
   }, []);
@@ -82,6 +84,14 @@ const LandingPage = () => {
         <div className="landing-subtitle">
           Your personalized, AI-powered newsletter generator. Summarizing the web's best technical content.
         </div>
+
+        {!loadingFeeds && (
+          <div className="landing-stats">
+            <span>📰 <strong>{articlesCount}</strong> Cached Articles</span>
+            <span className="stats-divider">|</span>
+            <span>📡 <strong>{feeds.length}</strong> RSS Feeds</span>
+          </div>
+        )}
 
         {loadingFeeds ? (
           <div className="text-center py-4">
