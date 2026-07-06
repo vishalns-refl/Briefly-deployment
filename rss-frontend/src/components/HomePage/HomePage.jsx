@@ -59,7 +59,7 @@ const HomePage = () => {
 
   const filteredArticles = articles.filter(article => {
     if (showLDOnly) {
-      return article.ld_score !== undefined && article.ld_score !== null && article.ld_score >= 7;
+      return article.ld_score !== undefined && article.ld_score !== null && article.ld_score >= 8;
     }
     return true;
   });
@@ -248,11 +248,6 @@ const HomePage = () => {
                     <div className="summary">
                       {article.summary || 'No summary available.'}
                     </div>
-                    {article.ld_insight && (
-                      <div className="ld-insight-box">
-                        <strong>💡 L&D Insight:</strong> {article.ld_insight}
-                      </div>
-                    )}
                     <div className="actions">
                       <a href={article.url || article.link} target="_blank" rel="noreferrer">
                         Read More
@@ -265,7 +260,7 @@ const HomePage = () => {
                         {loadingId === idx ? (
                           <span className="spinner-border spinner-border-sm text-info" role="status" />
                         ) : (
-                          'Did you know?'
+                          '💡 L&D Relevance'
                         )}
                       </button>                
                     </div>
@@ -330,7 +325,7 @@ const HomePage = () => {
           <div className="modal-dialog modal-dialog-centered">
             <div className="modal-content modal-content-glass">
               <div className="modal-header">
-                <h5 className="modal-title">💡 Did You Know?</h5>
+                <h5 className="modal-title">💡 L&D Relevance Evaluation</h5>
                 <button type="button" className="btn-close" onClick={() => setShowModal(false)}></button>
               </div>
               <div className="modal-body">
