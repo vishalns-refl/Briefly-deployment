@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Header
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 import requests
@@ -51,6 +51,9 @@ default = {
     'url': os.environ.get("OPENAI_API_BASE", "https://api.openai.com/v1"),
     'api_key': os.environ.get("OPENAI_API_KEY", ""),
     'model': os.environ.get("FEEDSUMMARIZER_MODEL", "gpt-3.5-turbo"),
+    'openrouter_url': os.environ.get("OPENROUTER_API_BASE", "https://openrouter.ai/api/v1"),
+    'openrouter_api_key': os.environ.get("OPENROUTER_API_KEY", ""),
+    'openrouter_model': os.environ.get("OPENROUTER_MODEL", "google/gemini-2.5-flash"),
     'system': os.environ.get("FEEDSUMMARIZER_SYSTEM", "You are an expert summarizer."),
     'instruction': os.environ.get("FEEDSUMMARIZER_INSTRUCTION", "Summarize this article into a short, punchy tech fact (max 2 sentences) to put in a newsletter, prioritizing the most important information first. Categorize it (AI, New in Tech, Business, Games/Entertainment). Also, evaluate this article from a Learning & Development / HR perspective. Assign a highly critical L&D relevance score from 1 to 10: 1-4 for low relevance (pure gaming, hardware, science breakthroughs, or product updates with no employee learning value); 5-7 for medium relevance (general business growth, tech trends, or company announcements); and 8-10 for high relevance (upskilling guides, leadership, workplace culture, remote work productivity, or direct training tools). Also output an L&D tag (Future of Work, Tech Upskilling, Workplace Culture, Leadership, or Productivity Tools). Return the response in the following JSON format only, with NO markdown formatting, backticks, or escape characters: {\"summary\": \"Your summary here\", \"tag\": \"Category\", \"ld_score\": 3, \"ld_tag\": \"Workplace Culture\"}"),
     'maximum': int(os.environ.get("FEEDSUMMARIZER_MAX_ARTICLES", "10")),  # Lowered default max articles per run for serverless efficiency
@@ -304,74 +307,150 @@ def log_api_usage(model: str, prompt_tokens: int, completion_tokens: int, purpos
     except Exception as e:
         print(f"Error logging API usage: {e}")
 
+def call_llm_with_fallback(messages: list, max_tokens: int, temperature: float, settings: dict, purpose: str = "summary") -> tuple[Optional[str], Optional[str]]:
+    """
+    Executes a chat completion call using the primary configured LLM (e.g. OpenAI).
+    If the primary call fails (error, missing key, timeout, rate-limit), falls back automatically
+    to OpenRouter API (if OPENROUTER_API_KEY is configured).
+
+    Returns tuple: (response_text, error_message)
+    """
+    primary_url = settings.get('url', 'https://api.openai.com/v1')
+    primary_key = settings.get('api_key', '')
+    primary_model = settings.get('model', 'gpt-3.5-turbo')
+
+    openrouter_url = settings.get('openrouter_url', 'https://openrouter.ai/api/v1')
+    openrouter_key = settings.get('openrouter_api_key', '')
+    openrouter_model = settings.get('openrouter_model', 'google/gemini-2.5-flash')
+
+    primary_error = None
+
+    # Attempt 1: Primary LLM Provider
+    if primary_key:
+        try:
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {primary_key}"
+            }
+            data = {
+                'model': primary_model,
+                'messages': messages,
+                'max_tokens': max_tokens,
+                'temperature': temperature
+            }
+            response = requests.post(
+                f"{primary_url.rstrip('/')}/chat/completions",
+                headers=headers,
+                json=data,
+                timeout=30
+            )
+            if response.status_code == 200:
+                resp_data = response.json()
+                content = resp_data['choices'][0]['message']['content'].strip()
+                usage = resp_data.get('usage', {})
+                log_api_usage(
+                    model=primary_model,
+                    prompt_tokens=usage.get('prompt_tokens', 0),
+                    completion_tokens=usage.get('completion_tokens', 0),
+                    purpose=purpose
+                )
+                return content, None
+            else:
+                primary_error = f"Primary LLM Status {response.status_code}: {response.text[:200]}"
+                print(f"WARNING: {primary_error}. Attempting OpenRouter fallback...")
+        except Exception as e:
+            primary_error = f"Primary LLM Exception: {str(e)}"
+            print(f"WARNING: {primary_error}. Attempting OpenRouter fallback...")
+    else:
+        primary_error = "Primary OPENAI_API_KEY not configured"
+
+    # Attempt 2: OpenRouter Fallback
+    if openrouter_key:
+        try:
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {openrouter_key}",
+                "HTTP-Referer": "https://github.com/AI-News-Aggregation-Summerization",
+                "X-Title": "AI News Aggregator"
+            }
+            data = {
+                'model': openrouter_model,
+                'messages': messages,
+                'max_tokens': max_tokens,
+                'temperature': temperature
+            }
+            response = requests.post(
+                f"{openrouter_url.rstrip('/')}/chat/completions",
+                headers=headers,
+                json=data,
+                timeout=30
+            )
+            if response.status_code == 200:
+                resp_data = response.json()
+                content = resp_data['choices'][0]['message']['content'].strip()
+                usage = resp_data.get('usage', {})
+                log_api_usage(
+                    model=f"openrouter/{openrouter_model}",
+                    prompt_tokens=usage.get('prompt_tokens', 0),
+                    completion_tokens=usage.get('completion_tokens', 0),
+                    purpose=purpose
+                )
+                print(f"SUCCESS: Fallback to OpenRouter ({openrouter_model}) succeeded.")
+                return content, None
+            else:
+                fallback_error = f"OpenRouter Fallback Status {response.status_code}: {response.text[:200]}"
+                print(f"ERROR: {fallback_error}")
+                return None, f"{primary_error} | {fallback_error}"
+        except Exception as e:
+            fallback_error = f"OpenRouter Fallback Exception: {str(e)}"
+            print(f"ERROR: {fallback_error}")
+            return None, f"{primary_error} | {fallback_error}"
+    else:
+        return None, f"{primary_error} | OpenRouter fallback not configured (OPENROUTER_API_KEY missing)"
+
 def generate_ai_response(content, settings):
     try:
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {settings['api_key']}"
-        }
-        
         messages = [
             {"role": "system", "content": settings['system']},
             {"role": "user", "content": f"{content}\n\n{settings['instruction']}"}
         ]
         
-        data = {
-            'model': settings['model'],
-            'messages': messages,
-            'max_tokens': 600,
-            'temperature': 0.7
-        }
-        
-        response = requests.post(
-            f"{settings['url']}/chat/completions",
-            headers=headers,
-            json=data,
-            timeout=30
+        response_text, error_msg = call_llm_with_fallback(
+            messages=messages,
+            max_tokens=600,
+            temperature=0.7,
+            settings=settings,
+            purpose="summary"
         )
-        
-        if response.status_code == 200:
-            resp_data = response.json()
-            response_text = resp_data['choices'][0]['message']['content'].strip()
-            
-            # Extract usage metrics
-            usage = resp_data.get('usage', {})
-            prompt_tokens = usage.get('prompt_tokens', 0)
-            completion_tokens = usage.get('completion_tokens', 0)
-            log_api_usage(
-                model=settings['model'],
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                purpose="summary"
-            )
-            
-            # Extract JSON from potential markdown response
-            start = response_text.find("{")
-            end = response_text.rfind("}")
-            if start != -1 and end != -1:
-                response_text = response_text[start:end+1]
-            else:
-                return f"Error parsing response text: {response_text}", "Unknown", None, None, None
-            
-            response_text = response_text.replace("\n", "").replace("\t", "")
-            
-            try:
-                response_json = json.loads(response_text)
-                summary = response_json.get('summary', '').strip()
-                tag = response_json.get('tag', 'Unknown').strip()
-                ld_score = response_json.get('ld_score')
-                if ld_score is not None:
-                    try:
-                        ld_score = int(ld_score)
-                    except (ValueError, TypeError):
-                        ld_score = None
-                ld_tag = response_json.get('ld_tag', '').strip() or None
-                ld_insight = response_json.get('ld_insight', '').strip() or None
-                return summary, tag, ld_score, ld_tag, ld_insight
-            except json.JSONDecodeError:
-                return f"Error parsing JSON: {response_text}", "Unknown", None, None, None
+
+        if error_msg or not response_text:
+            return f"Error: {error_msg}", "Unknown", None, None, None
+
+        # Extract JSON from potential markdown response
+        start = response_text.find("{")
+        end = response_text.rfind("}")
+        if start != -1 and end != -1:
+            response_text = response_text[start:end+1]
         else:
-            return f"LLM Error: {response.status_code}", "Unknown", None, None, None
+            return f"Error parsing response text: {response_text}", "Unknown", None, None, None
+        
+        response_text = response_text.replace("\n", "").replace("\t", "")
+        
+        try:
+            response_json = json.loads(response_text)
+            summary = response_json.get('summary', '').strip()
+            tag = response_json.get('tag', 'Unknown').strip()
+            ld_score = response_json.get('ld_score')
+            if ld_score is not None:
+                try:
+                    ld_score = int(ld_score)
+                except (ValueError, TypeError):
+                    ld_score = None
+            ld_tag = response_json.get('ld_tag', '').strip() or None
+            ld_insight = response_json.get('ld_insight', '').strip() or None
+            return summary, tag, ld_score, ld_tag, ld_insight
+        except json.JSONDecodeError:
+            return f"Error parsing JSON: {response_text}", "Unknown", None, None, None
             
     except Exception as e:
         return f"Exception occurred: {str(e)}", "Unknown", None, None, None
@@ -799,49 +878,23 @@ async def convert_url_to_did_you_know(request: ArticleURLRequest):
     settings = default.copy()
     prompt = f"{article_text}\n\n{settings['dyk_prompt']}"
     
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {default['api_key']}"
-    }
-
     messages = [
-        {"role": "system", "content": default['system']},
+        {"role": "system", "content": settings['system']},
         {"role": "user", "content": prompt}
     ]
 
-    data = {
-        "model": default["model"],
-        "messages": messages,
-        "max_tokens": 200,
-        "temperature": 0.7,
-    }
+    result, error_msg = call_llm_with_fallback(
+        messages=messages,
+        max_tokens=200,
+        temperature=0.7,
+        settings=settings,
+        purpose="did_you_know"
+    )
 
-    try:
-        response = requests.post(
-            f"{default['url']}/chat/completions",
-            headers=headers,
-            json=data,
-            timeout=30
-        )
-        if response.status_code == 200:
-            resp_data = response.json()
-            result = resp_data["choices"][0]["message"]["content"].strip()
-            
-            # Extract usage metrics
-            usage = resp_data.get('usage', {})
-            prompt_tokens = usage.get('prompt_tokens', 0)
-            completion_tokens = usage.get('completion_tokens', 0)
-            log_api_usage(
-                model=default["model"],
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                purpose="did_you_know"
-            )
-            return {"did_you_know": result}
-        else:
-            raise HTTPException(status_code=500, detail="Failed to generate summary from LLM.")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error during LLM call: {str(e)}")
+    if error_msg or not result:
+        raise HTTPException(status_code=500, detail=f"Failed to generate summary from LLM: {error_msg}")
+
+    return {"did_you_know": result}
 
 @app.get("/api/usage-metrics")
 async def get_usage_metrics():
@@ -993,55 +1046,58 @@ Keep the tone professional, friendly, encouraging, and completely non-technical.
 Do not wrap your output in markdown codeblock backticks (e.g. do not start with ```markdown and do not end with ```), return the raw markdown content directly.
 """
         
-        # Call OpenAI API
+        # Call LLM with OpenRouter fallback support
         settings = default.copy()
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {settings['api_key']}"
-        }
-        
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ]
         
-        data = {
-            'model': settings['model'],
-            'messages': messages,
-            'max_tokens': 1200,
-            'temperature': 0.7
-        }
-        
-        api_res = requests.post(
-            f"{settings['url']}/chat/completions",
-            headers=headers,
-            json=data,
-            timeout=45
+        newsletter_draft, error_msg = call_llm_with_fallback(
+            messages=messages,
+            max_tokens=1200,
+            temperature=0.7,
+            settings=settings,
+            purpose="newsletter"
         )
         
-        if api_res.status_code == 200:
-            resp_data = api_res.json()
-            newsletter_draft = resp_data['choices'][0]['message']['content'].strip()
-            
-            # Log usage
-            usage = api_res.json().get('usage', {})
-            prompt_tokens = usage.get('prompt_tokens', 0)
-            completion_tokens = usage.get('completion_tokens', 0)
-            log_api_usage(
-                model=settings['model'],
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                purpose="newsletter"
-            )
-            
+        if newsletter_draft and not error_msg:
             return {"newsletter": newsletter_draft}
         else:
-            raise HTTPException(status_code=500, detail=f"LLM generation failed: {api_res.status_code} - {api_res.text}")
+            raise HTTPException(status_code=500, detail=f"LLM generation failed: {error_msg}")
             
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating newsletter: {str(e)}")
+
+@app.get("/api/cron/ping")
+async def cron_ping(authorization: Optional[str] = Header(None)):
+    """
+    Vercel Cron Job endpoint to keep the Supabase database from pausing.
+    Triggered daily by Vercel.
+    """
+    cron_secret = os.environ.get("CRON_SECRET")
+    if cron_secret:
+        # Verify Bearer token authorization header
+        expected = f"Bearer {cron_secret}"
+        if authorization != expected:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    try:
+        # Querying the database to keep it active.
+        # Selecting a single ID from the feeds table is lightweight.
+        response = supabase.table("feeds").select("id").limit(1).execute()
+        return {
+            "status": "success",
+            "message": "Database pinged successfully",
+            "data_count": len(response.data) if response.data else 0
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database ping failed: {str(e)}")
 
 @app.on_event("startup")
 async def startup_event():
