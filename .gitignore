@@ -2,3 +2,5 @@
 .env
 news_summaries.csv
 news_summaries.json
+.vercel
+.env*
